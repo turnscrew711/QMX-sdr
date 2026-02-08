@@ -28,6 +28,7 @@ struct SWRSweepView: View {
             Section("Current frequency") {
                 Text(formatFreq(centerHz))
                     .font(.system(.body, design: .monospaced))
+                    .win98ListRow()
             }
 
             Section {
@@ -43,12 +44,15 @@ struct SWRSweepView: View {
                         }
                     }
                 }
+                .buttonStyle(Win98ButtonStyle())
                 .disabled(isRunning || !client.isConnected || centerHz == 0)
+                .win98ListRow()
 
                 if let msg = errorMessage {
                     Text(msg)
                         .foregroundStyle(.red)
                         .font(.caption)
+                        .win98ListRow()
                 }
             } header: {
                 Text("Sweep")
@@ -77,9 +81,15 @@ struct SWRSweepView: View {
                         }
                     }
                     .padding(.vertical, 4)
+                    .win98ListRow()
                 }
             }
         }
+        .scrollContentBackground(.hidden)
+        .background(Win98.windowBackground)
+        .listStyle(.insetGrouped)
+        .toolbarBackground(Win98.surface, for: .navigationBar)
+        .tint(Win98.surface)
         .navigationTitle("SWR Meter")
     }
 

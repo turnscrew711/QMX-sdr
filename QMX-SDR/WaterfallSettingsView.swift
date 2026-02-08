@@ -17,7 +17,6 @@ struct WaterfallSettingsView: View {
     @Binding var gamma: Float
     @Binding var palette: WaterfallPalette
     @Binding var inputGain: Float
-    var onDismiss: (() -> Void)?
     @Environment(\.dismiss) private var dismiss
 
     @State private var previewSensitivity: Double = 1.0
@@ -42,6 +41,13 @@ struct WaterfallSettingsView: View {
             get: { isPreviewCanvas ? previewGamma : Double(gamma) },
             set: { if isPreviewCanvas { previewGamma = $0 } else { gamma = Float($0) } }
         )
+    }
+    private func paletteBinding() -> Binding<WaterfallPalette> {
+        if isPreviewCanvas {
+            return $previewPalette
+        } else {
+            return $palette
+        }
     }
 
     var body: some View {
@@ -82,7 +88,7 @@ struct WaterfallSettingsView: View {
                     Text("Lower = darker darks; higher = flatter, brighter.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    Picker("Palette", selection: isPreviewCanvas ? $previewPalette : $palette) {
+                    Picker("Palette", selection: paletteBinding()) {
                         ForEach(WaterfallPalette.allCases) { p in
                             Text(p.label).tag(p)
                         }
@@ -103,12 +109,11 @@ struct WaterfallSettingsView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") {
-                        onDismiss?()
-                        dismiss()
-                    }
+                    Win98ToolbarDoneLabel { dismiss() }
                 }
             }
+            .toolbarBackground(Win98.surface, for: .navigationBar)
+            .tint(Win98.surface)
         }
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)

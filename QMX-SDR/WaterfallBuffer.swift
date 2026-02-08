@@ -49,10 +49,15 @@ final class WaterfallBuffer {
     /// Last rendered image for display.
     private(set) var image: CGImage?
 
+    private var _sensitivity: Float
+    private var _gamma: Float
+    private var _palette: WaterfallPalette
+
     /// Sensitivity 0.5–2.0: higher = more contrast (narrower effective range).
     var sensitivity: Float {
-        didSet {
-            sensitivity = min(2.0, max(0.5, sensitivity))
+        get { _sensitivity }
+        set {
+            _sensitivity = min(2.0, max(0.5, newValue))
             saveSensitivity()
             rerender()
         }
@@ -60,29 +65,45 @@ final class WaterfallBuffer {
 
     /// Display gamma 0.5–2.0 (used by Metal shader).
     var gamma: Float {
-        didSet {
-            gamma = min(2.0, max(0.5, gamma))
+        get { _gamma }
+        set {
+            _gamma = min(2.0, max(0.5, newValue))
             saveGamma()
         }
     }
 
     /// Color palette for the waterfall.
     var palette: WaterfallPalette {
-        didSet {
+        get { _palette }
+        set {
+            _palette = newValue
             savePalette()
             rerender()
         }
+    }
+
+    /// Set sensitivity, gamma, and palette in one go and rerender once. Use when applying sheet settings to avoid multiple image updates.
+    func applyDisplay(sensitivity s: Float, gamma g: Float, palette p: WaterfallPalette) {
+        _sensitivity = min(2.0, max(0.5, s))
+        _gamma = min(2.0, max(0.5, g))
+        _palette = p
+        saveSensitivity()
+        saveGamma()
+        savePalette()
+        rerender()
     }
 
     init(binCount: Int, maxRows: Int = 256) {
         self.binCount = binCount
         self.maxRows = maxRows
         let s = UserDefaults.standard.object(forKey: WaterfallDefaults.sensitivityKey) as? NSNumber
-        self.sensitivity = s?.floatValue ?? WaterfallDefaults.sensitivityDefault
+        let sVal = s?.floatValue ?? WaterfallDefaults.sensitivityDefault
+        self._sensitivity = min(2.0, max(0.5, sVal))
         let g = UserDefaults.standard.object(forKey: WaterfallDefaults.gammaKey) as? NSNumber
-        self.gamma = g?.floatValue ?? WaterfallDefaults.gammaDefault
+        let gVal = g?.floatValue ?? WaterfallDefaults.gammaDefault
+        self._gamma = min(2.0, max(0.5, gVal))
         let raw = UserDefaults.standard.string(forKey: WaterfallDefaults.paletteKey)
-        self.palette = (raw.flatMap { WaterfallPalette(rawValue: $0) }) ?? .blueRed
+        self._palette = (raw.flatMap { WaterfallPalette(rawValue: $0) }) ?? .blueRed
     }
 
     private func saveSensitivity() {

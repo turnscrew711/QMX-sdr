@@ -45,17 +45,13 @@ struct MainSDRView: View {
                     waterfallPalette = waterfallBuffer.palette
                     showWaterfallSettings = true
                 }
-                .accessibilityHint("Display and input level")
                 .buttonStyle(Win98ButtonStyle())
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
                 .accessibilityLabel("Waterfall display settings")
+                .accessibilityHint("Display and input level")
                 Button(iqRunning ? "Stop" : "Start") {
                     toggleIQ()
                 }
                 .buttonStyle(Win98ButtonStyle())
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
                 .accessibilityLabel(iqRunning ? "Stop IQ capture" : "Start IQ capture")
             }
             .padding(.horizontal, 10)
@@ -95,9 +91,11 @@ struct MainSDRView: View {
                 SettingsMenuView(transport: transport, client: client, presetsManager: presetsManager)
                     .toolbar {
                         ToolbarItem(placement: .cancellationAction) {
-                            Button("Done") { showSettings = false }
+                            Win98ToolbarDoneLabel { showSettings = false }
                         }
                     }
+                    .toolbarBackground(Win98.surface, for: .navigationBar)
+                    .tint(Win98.surface)
             }
         }
         .sheet(isPresented: $showWaterfallSettings) {
@@ -109,18 +107,16 @@ struct MainSDRView: View {
                     get: { iqInputGainRef.gain },
                     set: { iqInputGainRef.gain = $0 }
                 )
-            ) {
-                showWaterfallSettings = false
+            )
+        }
+        .onChange(of: showWaterfallSettings) { _, isShowing in
+            guard !isShowing else { return }
+            let sens = waterfallSensitivity
+            let gam = waterfallGamma
+            let pal = waterfallPalette
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                waterfallBuffer.applyDisplay(sensitivity: sens, gamma: gam, palette: pal)
             }
-        }
-        .onChange(of: waterfallSensitivity) { _, new in
-            waterfallBuffer.sensitivity = new
-        }
-        .onChange(of: waterfallGamma) { _, new in
-            waterfallBuffer.gamma = new
-        }
-        .onChange(of: waterfallPalette) { _, new in
-            waterfallBuffer.palette = new
         }
         .onChange(of: showSettings) { _, isShowing in
             if !isShowing {
@@ -292,7 +288,8 @@ struct MainSDRView: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
-        .background(Win98.surface)
+        .frame(maxWidth: .infinity)
+        .background(Win98.surface.ignoresSafeArea(edges: [.leading, .trailing, .bottom]))
     }
 
     /// Maps CAT mode (LSB/USB/CW/FSK etc.) to display mode: SSB, CW, or DIGI.
