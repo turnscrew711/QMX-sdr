@@ -62,6 +62,7 @@ struct WaterfallSpectrumView: View {
             VStack(spacing: 0) {
                 ZStack(alignment: .topLeading) {
                     WaterfallView(buffer: buffer)
+                        .id("\(buffer.sensitivity)-\(buffer.gamma)-\(buffer.palette.rawValue)")
                         .frame(height: waterfallHeight)
                     gestureOverlay(width: w, height: waterfallHeight)
                 }

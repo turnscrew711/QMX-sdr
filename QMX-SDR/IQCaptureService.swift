@@ -29,7 +29,7 @@ final class IQCaptureService {
 
     /// Configures session, selects USB input if available, and prepares the engine.
     func configure() throws {
-        try session.setCategory(.playAndRecord, mode: .measurement, options: [.defaultToSpeaker, .allowBluetooth, .mixWithOthers])
+        try session.setCategory(.playAndRecord, mode: .measurement, options: [.defaultToSpeaker, .allowBluetoothHFP, .mixWithOthers])
         try session.setActive(true)
 
         let inputs = session.availableInputs ?? []

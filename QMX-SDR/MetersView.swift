@@ -37,6 +37,9 @@ struct SMeterView: View {
                 .font(.system(.caption2, design: .monospaced))
         }
         .frame(minWidth: 32)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("S meter")
+        .accessibilityValue("\(displayValue) S-units")
     }
 }
 

@@ -7,6 +7,11 @@
 
 import SwiftUI
 
+/// Holds input gain so the IQ callback can read the current value without capturing the view.
+private final class IQInputGainRef {
+    var gain: Float = 0.4
+}
+
 struct MainSDRView: View {
     @State private var capture = IQCaptureService()
     @State private var pipeline = SpectrumPipeline()
@@ -16,6 +21,11 @@ struct MainSDRView: View {
     @State private var presetsManager = PresetsManager()
     @State private var iqRunning = false
     @State private var showSettings = false
+    @State private var showWaterfallSettings = false
+    @State private var waterfallSensitivity: Float = 1.0
+    @State private var waterfallGamma: Float = 0.92
+    @State private var waterfallPalette: WaterfallPalette = .blueRed
+    @State private var iqInputGainRef = IQInputGainRef()
     @State private var selectedBandId: String? = "40"
     @State private var selectedVFO: ActiveVFO = .a
     @State private var meterTimer: Timer?
@@ -23,13 +33,30 @@ struct MainSDRView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
+                if iqRunning {
+                    Text(capture.hasUSBInput ? "IQ" : "IQ (no USB)")
+                        .font(.caption)
+                        .foregroundStyle(capture.hasUSBInput ? Color.secondary : Color.orange)
+                }
                 Spacer(minLength: 0)
+                Button("Waterfall") {
+                    waterfallSensitivity = waterfallBuffer.sensitivity
+                    waterfallGamma = waterfallBuffer.gamma
+                    waterfallPalette = waterfallBuffer.palette
+                    showWaterfallSettings = true
+                }
+                .accessibilityHint("Display and input level")
+                .buttonStyle(Win98ButtonStyle())
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .accessibilityLabel("Waterfall display settings")
                 Button(iqRunning ? "Stop" : "Start") {
                     toggleIQ()
                 }
                 .buttonStyle(Win98ButtonStyle())
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)
+                .accessibilityLabel(iqRunning ? "Stop IQ capture" : "Start IQ capture")
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
@@ -42,13 +69,20 @@ struct MainSDRView: View {
             metersBar
             frequencyBar
             bottomBar
+            ritBar
         }
         .background(Win98.windowBackground)
         .onAppear {
             if client == nil {
                 client = CATClient(transport: transport)
+                client?.onConnectionChanged = { connected in
+                    if connected { self.syncFromRadio() }
+                }
             }
             startMeterPolling()
+            waterfallSensitivity = waterfallBuffer.sensitivity
+            waterfallGamma = waterfallBuffer.gamma
+            waterfallPalette = waterfallBuffer.palette
         }
         .onDisappear {
             meterTimer?.invalidate()
@@ -66,11 +100,45 @@ struct MainSDRView: View {
                     }
             }
         }
+        .sheet(isPresented: $showWaterfallSettings) {
+            WaterfallSettingsView(
+                sensitivity: $waterfallSensitivity,
+                gamma: $waterfallGamma,
+                palette: $waterfallPalette,
+                inputGain: Binding(
+                    get: { iqInputGainRef.gain },
+                    set: { iqInputGainRef.gain = $0 }
+                )
+            ) {
+                showWaterfallSettings = false
+            }
+        }
+        .onChange(of: waterfallSensitivity) { _, new in
+            waterfallBuffer.sensitivity = new
+        }
+        .onChange(of: waterfallGamma) { _, new in
+            waterfallBuffer.gamma = new
+        }
+        .onChange(of: waterfallPalette) { _, new in
+            waterfallBuffer.palette = new
+        }
         .onChange(of: showSettings) { _, isShowing in
             if !isShowing {
                 let hz = selectedVFO == .a ? (client?.frequencyAHz ?? 0) : (client?.frequencyBHz ?? 0)
                 if hz > 0 { selectedBandId = HFBands.band(containing: hz)?.id }
             }
+        }
+    }
+
+    /// After Bluetooth connect: read FA, FB, MD, RT from radio and update selectedBandId / selectedVFO.
+    private func syncFromRadio() {
+        client?.requestFullState()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+            guard let c = self.client else { return }
+            let bandId = HFBands.band(containing: c.frequencyAHz)?.id
+                ?? HFBands.band(containing: c.frequencyBHz)?.id
+            if let id = bandId { self.selectedBandId = id }
+            self.selectedVFO = .a
         }
     }
 
@@ -111,6 +179,8 @@ struct MainSDRView: View {
         .overlay {
             VFOPanelBorder(isSelected: selectedVFO == vfo)
         }
+        .accessibilityLabel(isA ? "VFO A waterfall and spectrum" : "VFO B waterfall and spectrum")
+        .accessibilityHint("Tap or drag to set frequency; pinch to zoom")
     }
 
     private var metersBar: some View {
@@ -128,13 +198,47 @@ struct MainSDRView: View {
         return HStack {
             Text(formatFrequency(freq))
                 .font(.system(size: 22, weight: .medium, design: .monospaced))
+                .accessibilityLabel("Frequency \(formatFrequency(freq))")
             Text(client?.mode.isEmpty == false ? client!.mode : "—")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
+            if client?.ritEnabled == true {
+                Text("RIT on")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
             Spacer()
         }
         .padding(.horizontal)
         .padding(.vertical, 8)
+        .background(Win98.surface)
+    }
+
+    private var ritBar: some View {
+        let connected = client?.isConnected == true
+        return HStack(spacing: 6) {
+            Spacer(minLength: 0)
+            Text("RIT")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Button("−100") {
+                client?.ritDown(100)
+            }
+            .buttonStyle(Win98ButtonStyle())
+            .font(.caption)
+            .disabled(!connected)
+            .accessibilityLabel("RIT down 100 Hz")
+            Button("+100") {
+                client?.ritUp(100)
+            }
+            .buttonStyle(Win98ButtonStyle())
+            .font(.caption)
+            .disabled(!connected)
+            .accessibilityLabel("RIT up 100 Hz")
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 4)
         .background(Win98.surface)
     }
 
@@ -170,6 +274,7 @@ struct MainSDRView: View {
             .menuStyle(.borderlessButton)
             .win98Box()
             .disabled(!connected)
+            .accessibilityLabel("Band selection")
 
             Button("VFO") {
                 withAnimation(.easeInOut(duration: 0.2)) {
@@ -179,9 +284,11 @@ struct MainSDRView: View {
             }
             .buttonStyle(Win98ButtonStyle())
             .disabled(!connected)
+            .accessibilityLabel("Switch VFO")
 
             Button("Menu") { showSettings = true }
                 .buttonStyle(Win98ButtonStyle())
+                .accessibilityLabel("Settings menu")
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
@@ -238,6 +345,7 @@ struct MainSDRView: View {
         }
         .menuStyle(.borderlessButton)
         .win98Box()
+        .accessibilityLabel("Mode selection")
     }
 
     private func applySSBForCurrentBand() {
@@ -259,6 +367,7 @@ struct MainSDRView: View {
         meterTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
             guard client.isConnected else { return }
             client.requestSMeter()
+            client.requestRITStatus()
             if client.isTransmitting {
                 client.requestSWR()
             }
@@ -271,8 +380,10 @@ struct MainSDRView: View {
             capture.stop()
             iqRunning = false
         } else {
-            capture.onSamples = { [pipeline, waterfallBuffer] samples, _ in
-                pipeline.push(samples: samples)
+            capture.onSamples = { [pipeline, waterfallBuffer, iqInputGainRef] samples, _ in
+                let gain = iqInputGainRef.gain
+                let scaled = samples.map { $0 * gain }
+                pipeline.push(samples: scaled)
                 if !pipeline.magnitudeDB.isEmpty {
                     waterfallBuffer.pushRow(pipeline.magnitudeDB)
                 }

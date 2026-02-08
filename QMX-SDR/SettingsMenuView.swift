@@ -26,6 +26,12 @@ struct SettingsMenuView: View {
                     NavigationLink("SWR Meter") {
                         SWRSweepView(client: client!)
                     }
+                    Button("Tune") {
+                        client?.setTransmit(true)
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                            client?.setTransmit(false)
+                        }
+                    }
                 }
             }
             if presetsManager != nil && client != nil {
@@ -61,12 +67,24 @@ struct SettingsMenuView: View {
                 SettingsRow(title: "Contrast", type: .number(value: 50))
                 SettingsRow(title: "Backlight", type: .toggle(isOn: true))
             }
+            if client != nil {
+                Section("RIT") {
+                    NavigationLink("RIT control") {
+                        RITMenuView(client: client!)
+                    }
+                }
+            }
             Section("Tests") {
                 NavigationLink("Test IQ") { TestIQView() }
                 NavigationLink("Test CAT") { TestCATView() }
                 NavigationLink("Spectrum") { SpectrumTestView() }
                 NavigationLink("CAT Control") { CATControlView() }
                 NavigationLink("Waterfall") { WaterfallTestView() }
+            }
+            Section("Help") {
+                NavigationLink("About & limitations") {
+                    AboutLimitationsView()
+                }
             }
         }
         .navigationTitle("QMX Settings")
@@ -134,6 +152,8 @@ struct PresetsMenuView: View {
                             client?.setMode(code)
                             client?.requestMode()
                         })
+                        client?.clearRIT()
+                        client?.setRIT(on: false)
                         client?.requestFrequencyA()
                         client?.requestFrequencyB()
                         dismiss()
@@ -141,6 +161,11 @@ struct PresetsMenuView: View {
                         HStack {
                             Text(preset.name)
                             Spacer()
+                            if !preset.mode.isEmpty {
+                                Text(preset.mode)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
                             Text(String(format: "%.3f MHz", Double(preset.frequencyHz) / 1_000_000))
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
@@ -155,6 +180,75 @@ struct PresetsMenuView: View {
             ToolbarItem(placement: .cancellationAction) {
                 Button("Done") { dismiss() }
             }
+        }
+    }
+}
+
+/// About the app and QMX/CAT limitations (from QRPLabs Groups.io and manual).
+struct AboutLimitationsView: View {
+    var body: some View {
+        List {
+            Section("Waterfall & IQ") {
+                Text("Enable IQ Mode on the QMX: Menu → System config → IQ Mode → ENABLED. Connect QMX via USB for 48 kHz stereo IQ.")
+                Text("IQ mode is receive-only: the waterfall shows RX; transmit is still controlled by the radio and CAT.")
+            }
+            Section("CAT & status") {
+                Text("Real-time SWR and \"SWR protection tripped\" are not available via CAT; the QMX does not report them to the app. Use the radio’s LCD for that.")
+                Text("S-meter and SWR (when transmitting) are polled via CAT where supported.")
+            }
+            Section("RIT") {
+                Text("QMX RIT uses absolute offset: RU sets +n Hz, RD sets -n Hz. Use RIT control in the menu to turn RIT on/off, clear to zero, or step ±100 Hz.")
+            }
+            Section("Tune / CW") {
+                Text("CAT does not support full CW keying (e.g. TQ1; for CW). Use the radio’s front panel for tune or CW. Any app Tune control would send carrier only.")
+            }
+            Section("Compatibility") {
+                Text("CAT is based on Kenwood TS-480; QMX accepts variable-length frequency and uses absolute RIT (RU/RD). Compatible with WSJT-X and similar when set to TS-440 or TS-480.")
+            }
+        }
+        .navigationTitle("About & limitations")
+    }
+}
+
+/// RIT control: on/off, clear, step +/-.
+struct RITMenuView: View {
+    @Bindable var client: CATClient
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        List {
+            Section("RIT") {
+                Toggle("RIT on", isOn: Binding(
+                    get: { client.ritEnabled },
+                    set: { client.setRIT(on: $0); client.requestRITStatus() }
+                ))
+                .disabled(!client.isConnected)
+                Button("Clear RIT (0 Hz)") {
+                    client.clearRIT()
+                    client.requestRITStatus()
+                }
+                .disabled(!client.isConnected)
+            }
+            Section("Step") {
+                HStack {
+                    Button("−100 Hz") {
+                        client.ritDown(100)
+                    }
+                    .disabled(!client.isConnected)
+                    Spacer()
+                    Text("RIT offset")
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button("+100 Hz") {
+                        client.ritUp(100)
+                    }
+                    .disabled(!client.isConnected)
+                }
+            }
+        }
+        .navigationTitle("RIT control")
+        .onAppear {
+            client.requestRITStatus()
         }
     }
 }

@@ -28,6 +28,8 @@ final class CATClient {
     private(set) var sMeterRaw: Int = 0
     /// SWR value (e.g. 1.0–10). Updated when RM6; is supported (often only in TX).
     private(set) var swr: Double = 1.0
+    /// RIT on/off. Updated when RT; is supported.
+    private(set) var ritEnabled: Bool = false
     /// Which VFO is active for display/tuning.
     var activeVFO: ActiveVFO = .a
     /// Last raw reply for debug.
@@ -35,6 +37,9 @@ final class CATClient {
 
     private weak var transport: (any CATTransport)?
     private var pendingCommand: String?
+
+    /// Called when transport connection state changes. Set to e.g. sync app state when connected.
+    var onConnectionChanged: ((Bool) -> Void)?
 
     init(transport: any CATTransport) {
         self.transport = transport
@@ -49,7 +54,16 @@ final class CATClient {
                     self?.mode = ""
                 }
             }
+            self?.onConnectionChanged?(connected)
         }
+    }
+
+    /// Request current frequencies, mode, and RIT from the radio (call after connect to sync app).
+    func requestFullState() {
+        requestFrequencyA()
+        requestFrequencyB()
+        requestMode()
+        requestRITStatus()
     }
 
     var isConnected: Bool { transport?.isConnected ?? false }
@@ -73,10 +87,16 @@ final class CATClient {
     func setFrequencyB(_ hz: UInt64) { send("FB\(hz);") }
     /// Toggle PTT (TQ). 1 = TX, 0 = RX.
     func setTransmit(_ on: Bool) { send(on ? "TX;" : "RX;") }
-    /// RIT up by N Hz (RU + 4 digits).
-    func ritUp(_ hz: Int = 100) { send("RU\(String(format: "%04d", min(9999, max(0, hz))));") }
-    /// RIT down by N Hz (RD + 4 digits).
-    func ritDown(_ hz: Int = 100) { send("RD\(String(format: "%04d", min(9999, max(0, hz))));") }
+    /// RIT up: set absolute positive RIT offset (QMX RU = absolute +n Hz). Variable-length digits.
+    func ritUp(_ hz: Int = 100) { send("RU\(min(99999, max(0, hz)));") }
+    /// RIT down: set absolute negative RIT offset (QMX RD = absolute -n Hz). Variable-length digits.
+    func ritDown(_ hz: Int = 100) { send("RD\(min(99999, max(0, hz)));") }
+    /// Clear RIT to zero (RC;). Does not turn RIT off.
+    func clearRIT() { send("RC;") }
+    /// Set RIT on (RT1;) or off (RT0;).
+    func setRIT(on: Bool) { send(on ? "RT1;" : "RT0;") }
+    /// Request RIT status (RT;). Reply updates ritEnabled.
+    func requestRITStatus() { send("RT;") }
     /// Set mode: 1=LSB, 2=USB, 3=CW, 4=FM, 5=AM, 6=FSK, 7=CWR, 8=PKT.
     func setMode(_ code: Int) { send("MD\(code);") }
     /// Request S-meter (SM;). Not all rigs support.
@@ -114,6 +134,10 @@ final class CATClient {
                 let digits = rest.filter { $0.isNumber }
                 if let v = Int(String(digits)) {
                     swr = swrFromRMByte(v)
+                }
+            case "RT":
+                if let v = Int(rest.filter { $0.isNumber }.prefix(1)), v == 0 || v == 1 {
+                    ritEnabled = (v == 1)
                 }
             default:
                 break

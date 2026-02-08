@@ -29,18 +29,20 @@ vertex VertexOut waterfall_vertex(uint vid [[vertex_id]],
 }
 
 fragment float4 waterfall_fragment(VertexOut in [[stage_in]],
-                                   texture2d<float, access::sample> tex [[texture(0)]]) {
+                                   texture2d<float, access::sample> tex [[texture(0)]],
+                                   constant float *gamma [[buffer(0)]]) {
     constexpr sampler s(coord::normalized, filter::linear, address::clamp_to_edge);
     float4 c = tex.sample(s, in.texCoord);
-    float gamma = 0.92;
-    c.rgb = pow(max(c.rgb, 0.0), gamma);
+    float g = gamma ? *gamma : 0.92;
+    c.rgb = pow(max(c.rgb, 0.0), g);
     return c;
 }
 """
 
-/// Metal view that draws the waterfall CGImage with linear filtering and a slight gamma.
+/// Metal view that draws the waterfall CGImage with linear filtering and adjustable gamma.
 struct WaterfallMetalView: UIViewRepresentable {
     var image: CGImage?
+    var gamma: Float = 0.92
 
     func makeCoordinator() -> Coordinator {
         Coordinator()
@@ -55,18 +57,20 @@ struct WaterfallMetalView: UIViewRepresentable {
         mtkView.clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
         mtkView.isPaused = true
         mtkView.enableSetNeedsDisplay = true
-        context.coordinator.setup(mtkView: mtkView, image: image)
+        context.coordinator.setup(mtkView: mtkView, image: image, gamma: gamma)
         return mtkView
     }
 
     func updateUIView(_ mtkView: MTKView, context: Context) {
         context.coordinator.updateTexture(from: image, view: mtkView)
+        context.coordinator.updateGamma(gamma)
         mtkView.setNeedsDisplay()
     }
 
     final class Coordinator: NSObject, MTKViewDelegate {
         private var pipelineState: MTLRenderPipelineState?
         private var vertexBuffer: MTLBuffer?
+        private var gammaBuffer: MTLBuffer?
         private var texture: MTLTexture?
         private let queue = DispatchQueue(label: "waterfall.metal")
 
@@ -77,7 +81,7 @@ struct WaterfallMetalView: UIViewRepresentable {
              1,  1, 1, 0
         ]
 
-        func setup(mtkView: MTKView, image: CGImage?) {
+        func setup(mtkView: MTKView, image: CGImage?, gamma: Float) {
             guard let device = mtkView.device else { return }
             let lib = try? device.makeLibrary(source: kWaterfallMetalSource, options: nil)
             let vertexFn = lib?.makeFunction(name: "waterfall_vertex")
@@ -96,8 +100,14 @@ struct WaterfallMetalView: UIViewRepresentable {
                 length: Self.quadVertices.count * MemoryLayout<Float>.stride,
                 options: .storageModeShared
             )
+            var g = gamma
+            gammaBuffer = device.makeBuffer(bytes: &g, length: MemoryLayout<Float>.stride, options: .storageModeShared)
 
             updateTexture(from: image, view: mtkView)
+        }
+
+        func updateGamma(_ gamma: Float) {
+            gammaBuffer?.contents().assumingMemoryBound(to: Float.self).pointee = gamma
         }
 
         func updateTexture(from cgImage: CGImage?, view: MTKView) {
@@ -137,6 +147,9 @@ struct WaterfallMetalView: UIViewRepresentable {
             encoder.setVertexBuffer(vertexBuffer, offset: 0, index: 0)
             if let texture = texture {
                 encoder.setFragmentTexture(texture, index: 0)
+                if let gb = gammaBuffer {
+                    encoder.setFragmentBuffer(gb, offset: 0, index: 0)
+                }
                 encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
             }
             encoder.endEncoding()
