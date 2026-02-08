@@ -32,36 +32,10 @@ struct MainSDRView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                if iqRunning {
-                    Text(capture.hasUSBInput ? "IQ" : "IQ (no USB)")
-                        .font(.caption)
-                        .foregroundStyle(capture.hasUSBInput ? Color.secondary : Color.orange)
-                }
-                Spacer(minLength: 0)
-                Button("Waterfall") {
-                    waterfallSensitivity = waterfallBuffer.sensitivity
-                    waterfallGamma = waterfallBuffer.gamma
-                    waterfallPalette = waterfallBuffer.palette
-                    showWaterfallSettings = true
-                }
-                .buttonStyle(Win98ButtonStyle())
-                .accessibilityLabel("Waterfall display settings")
-                .accessibilityHint("Display and input level")
-                Button(iqRunning ? "Stop" : "Start") {
-                    toggleIQ()
-                }
-                .buttonStyle(Win98ButtonStyle())
-                .accessibilityLabel(iqRunning ? "Stop IQ capture" : "Start IQ capture")
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(Win98.surface)
+            topToolbar
             vfoPanel(vfo: .a)
                 .frame(minHeight: 180)
-            vfoPanel(vfo: .b)
-                .frame(minHeight: 180)
-
+            secondPanel
             metersBar
             frequencyBar
             bottomBar
@@ -89,13 +63,13 @@ struct MainSDRView: View {
         .sheet(isPresented: $showSettings) {
             NavigationStack {
                 SettingsMenuView(transport: transport, client: client, presetsManager: presetsManager)
-                    .toolbar {
-                        ToolbarItem(placement: .cancellationAction) {
-                            Win98ToolbarDoneLabel { showSettings = false }
-                        }
-                    }
                     .toolbarBackground(Win98.surface, for: .navigationBar)
                     .tint(Win98.surface)
+            }
+            .overlay(alignment: .topTrailing) {
+                Win98ToolbarDoneLabel { showSettings = false }
+                    .padding(.top, 16)
+                    .padding(.trailing, 16)
             }
         }
         .sheet(isPresented: $showWaterfallSettings) {
@@ -140,6 +114,46 @@ struct MainSDRView: View {
 
     private var selectedBandLabel: String {
         HFBands.bands.first(where: { $0.id == selectedBandId })?.label ?? "—"
+    }
+
+    @ViewBuilder
+    private var topToolbar: some View {
+        HStack {
+            if iqRunning {
+                Text(capture.hasUSBInput ? "IQ" : "IQ (no USB)")
+                    .font(.caption)
+                    .foregroundStyle(capture.hasUSBInput ? Color.secondary : Color.orange)
+            }
+            Spacer(minLength: 0)
+            Button("Waterfall") {
+                waterfallSensitivity = waterfallBuffer.sensitivity
+                waterfallGamma = waterfallBuffer.gamma
+                waterfallPalette = waterfallBuffer.palette
+                showWaterfallSettings = true
+            }
+            .buttonStyle(Win98ButtonStyle())
+            .accessibilityLabel("Waterfall display settings")
+            .accessibilityHint("Display and input level")
+            Button(iqRunning ? "Stop" : "Start") {
+                toggleIQ()
+            }
+            .buttonStyle(Win98ButtonStyle())
+            .accessibilityLabel(iqRunning ? "Stop IQ capture" : "Start IQ capture")
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(Win98.surface)
+    }
+
+    @ViewBuilder
+    private var secondPanel: some View {
+        if displayMode == "DIGI" {
+            FT8View(client: client)
+                .frame(minHeight: 180)
+        } else {
+            vfoPanel(vfo: .b)
+                .frame(minHeight: 180)
+        }
     }
 
     private func vfoPanel(vfo: ActiveVFO) -> some View {

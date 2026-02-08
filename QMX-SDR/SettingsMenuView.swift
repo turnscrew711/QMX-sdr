@@ -86,6 +86,16 @@ struct SettingsMenuView: View {
                 SettingsRow(title: "Backlight", type: .toggle(isOn: true))
                     .win98ListRow()
             }
+            if let client = client {
+                Section("Radio (via CAT)") {
+                    RadioVolumeRow(client: client)
+                        .win98ListRow()
+                    RadioRFGainRow(client: client)
+                        .win98ListRow()
+                    RadioKeyerSpeedRow(client: client)
+                        .win98ListRow()
+                }
+            }
             if client != nil {
                 Section("RIT") {
                     NavigationLink("RIT control") {
@@ -140,6 +150,7 @@ private struct SettingsRow: View {
             case .toggle(let isOn):
                 Toggle("", isOn: .constant(isOn))
                     .labelsHidden()
+                    .tint(.green)
             case .number(let value):
                 Text("\(value)")
                     .foregroundStyle(.secondary)
@@ -148,6 +159,70 @@ private struct SettingsRow: View {
                     .foregroundStyle(.secondary)
             }
         }
+    }
+}
+
+// MARK: - Radio (via CAT) rows – read/write when QMX connected
+private struct RadioVolumeRow: View {
+    @Bindable var client: CATClient
+
+    var body: some View {
+        HStack {
+            Text("Volume (dB)")
+            Spacer()
+            Text(String(format: "%.2f", client.volumeDB))
+                .foregroundStyle(.secondary)
+                .frame(width: 44, alignment: .trailing)
+            Stepper("", value: Binding(
+                get: { client.volumeDB },
+                set: { client.setVolume($0) }
+            ), in: 0...63.75, step: 0.25)
+            .labelsHidden()
+        }
+        .disabled(!client.isConnected)
+        .onAppear { client.requestVolume() }
+    }
+}
+
+private struct RadioRFGainRow: View {
+    @Bindable var client: CATClient
+
+    var body: some View {
+        HStack {
+            Text("RF Gain (dB)")
+            Spacer()
+            Text("\(client.rfGainDB)")
+                .foregroundStyle(.secondary)
+                .frame(width: 28, alignment: .trailing)
+            Stepper("", value: Binding(
+                get: { Double(client.rfGainDB) },
+                set: { client.setRFGain(Int($0)) }
+            ), in: 0...99, step: 1)
+            .labelsHidden()
+        }
+        .disabled(!client.isConnected)
+        .onAppear { client.requestRFGain() }
+    }
+}
+
+private struct RadioKeyerSpeedRow: View {
+    @Bindable var client: CATClient
+
+    var body: some View {
+        HStack {
+            Text("Keyer (WPM)")
+            Spacer()
+            Text("\(client.keyerSpeedWPM)")
+                .foregroundStyle(.secondary)
+                .frame(width: 28, alignment: .trailing)
+            Stepper("", value: Binding(
+                get: { Double(client.keyerSpeedWPM) },
+                set: { client.setKeyerSpeed(Int($0)) }
+            ), in: 5...99, step: 1)
+            .labelsHidden()
+        }
+        .disabled(!client.isConnected)
+        .onAppear { client.requestKeyerSpeed() }
     }
 }
 
@@ -235,6 +310,8 @@ struct AboutLimitationsView: View {
                     .win98ListRow()
             }
             Section("CAT & status") {
+                Text("When connected via Bluetooth, use \"Radio (via CAT)\" in Settings to get/set Volume (AG), RF Gain (RG), and Keyer speed (WPM) (KS) on the QMX.")
+                    .win98ListRow()
                 Text("Real-time SWR and \"SWR protection tripped\" are not available via CAT; the QMX does not report them to the app. Use the radio's LCD for that.")
                     .win98ListRow()
                 Text("S-meter and SWR (when transmitting) are polled via CAT where supported.")
@@ -274,6 +351,7 @@ struct RITMenuView: View {
                     get: { client.ritEnabled },
                     set: { client.setRIT(on: $0); client.requestRITStatus() }
                 ))
+                .tint(.green)
                 .disabled(!client.isConnected)
                 .win98ListRow()
                 Button("Clear RIT (0 Hz)") {

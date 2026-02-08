@@ -3,6 +3,9 @@
 //  QMX-SDR
 //
 //  Kenwood TS-480 style CAT: send commands, parse replies. QMX compatible.
+//  Ref: QMX CAT manual 1.02_006 (AG, RG, KS, FA, FB, MD, RT, RU, RD, RC, SM, RM, TQ, etc.)
+//  Implemented: FA, FB, MD, RT, RU, RD, RC, TQ/TX/RX, SM, RM (SWR), AG (volume), RG (RF gain), KS (keyer WPM).
+//  Not yet: IF (composite), FR/FT (VFO mode), SP (split), ML/MM (menu discovery/set), SW (SWR hundredths), Q0–QB.
 //
 
 import Foundation
@@ -30,6 +33,12 @@ final class CATClient {
     private(set) var swr: Double = 1.0
     /// RIT on/off. Updated when RT; is supported.
     private(set) var ritEnabled: Bool = false
+    /// AF gain (volume) in dB, 0.25 dB steps. Updated when AG; is supported.
+    private(set) var volumeDB: Double = 20.0
+    /// RF gain in dB for current band. Updated when RG; is supported.
+    private(set) var rfGainDB: Int = 54
+    /// Keyer speed in WPM. Updated when KS; is supported.
+    private(set) var keyerSpeedWPM: Int = 20
     /// Which VFO is active for display/tuning.
     var activeVFO: ActiveVFO = .a
     /// Last raw reply for debug.
@@ -64,6 +73,9 @@ final class CATClient {
         requestFrequencyB()
         requestMode()
         requestRITStatus()
+        requestVolume()
+        requestRFGain()
+        requestKeyerSpeed()
     }
 
     var isConnected: Bool { transport?.isConnected ?? false }
@@ -103,6 +115,28 @@ final class CATClient {
     func requestSMeter() { send("SM;") }
     /// Request SWR (RM6;). Often valid only when transmitting.
     func requestSWR() { send("RM6;") }
+    /// Request AF gain / volume (AG;). Reply format AG0091 = 22.75 dB (0.25 dB steps).
+    func requestVolume() { send("AG;") }
+    /// Set AF gain: value in dB (0.25 dB steps). Send AG0nnn; e.g. AG091; = 22.75 dB.
+    func setVolume(_ dB: Double) {
+        let steps = Int(round(dB / 0.25))
+        let clamped = min(255, max(0, steps))
+        send("AG\(String(format: "%03d", clamped));")
+    }
+    /// Request RF gain (RG;). Reply RG063 = 63 dB.
+    func requestRFGain() { send("RG;") }
+    /// Set RF gain in dB (e.g. RG63;).
+    func setRFGain(_ dB: Int) {
+        let clamped = min(99, max(0, dB))
+        send("RG\(clamped);")
+    }
+    /// Request keyer speed (KS;). Reply in WPM.
+    func requestKeyerSpeed() { send("KS;") }
+    /// Set keyer speed in WPM (e.g. KS20;).
+    func setKeyerSpeed(_ wpm: Int) {
+        let clamped = min(99, max(5, wpm))
+        send("KS\(clamped);")
+    }
     /// Swap active VFO (VFO A/B). Some rigs use VS; or similar; we only switch local state and sync displayed freq.
     func switchVFO() {
         activeVFO = activeVFO == .a ? .b : .a
@@ -138,6 +172,19 @@ final class CATClient {
             case "RT":
                 if let v = Int(rest.filter { $0.isNumber }.prefix(1)), v == 0 || v == 1 {
                     ritEnabled = (v == 1)
+                }
+            case "AG":
+                let digits = rest.filter { $0.isNumber }
+                if let steps = Int(digits), steps >= 0 {
+                    volumeDB = Double(min(255, steps)) * 0.25
+                }
+            case "RG":
+                if let v = Int(rest.filter { $0.isNumber }), v >= 0 {
+                    rfGainDB = min(99, v)
+                }
+            case "KS":
+                if let v = Int(rest.filter { $0.isNumber }), v >= 0 {
+                    keyerSpeedWPM = min(99, max(5, v))
                 }
             default:
                 break

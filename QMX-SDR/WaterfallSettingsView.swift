@@ -107,13 +107,13 @@ struct WaterfallSettingsView: View {
             .background(Win98.windowBackground)
             .navigationTitle("Waterfall Display")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Win98ToolbarDoneLabel { dismiss() }
-                }
-            }
             .toolbarBackground(Win98.surface, for: .navigationBar)
             .tint(Win98.surface)
+        }
+        .overlay(alignment: .topTrailing) {
+            Win98ToolbarDoneLabel { dismiss() }
+                .padding(.top, 16)
+                .padding(.trailing, 16)
         }
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)

@@ -11,9 +11,19 @@ import UIKit
 @main
 struct QMX_SDRApp: App {
     init() {
-        // Remove default toolbar button bubble so custom Win98 Done (and other bar buttons) don’t show a white pill behind them.
-        UIBarButtonItem.appearance().setBackgroundImage(UIImage(), for: .normal, barMetrics: .default)
-        UIBarButtonItem.appearance().setBackgroundImage(UIImage(), for: .normal, barMetrics: .compact)
+        // Match toolbar button bubble to menu background (Win98.surface) so it blends in.
+        let surfaceColor = UIColor(red: 0.86, green: 0.86, blue: 0.86, alpha: 1)
+        let size = CGSize(width: 1, height: 1)
+        let image = UIGraphicsImageRenderer(size: size).image { ctx in
+            surfaceColor.setFill()
+            ctx.fill(CGRect(origin: .zero, size: size))
+        }.withRenderingMode(.alwaysOriginal)
+        let resizable = image.resizableImage(withCapInsets: .zero, resizingMode: .stretch)
+        let navBarButton = UIBarButtonItem.appearance(whenContainedInInstancesOf: [UINavigationBar.self])
+        for state: UIControl.State in [.normal, .highlighted, .focused, .disabled] {
+            navBarButton.setBackgroundImage(resizable, for: state, barMetrics: .default)
+            navBarButton.setBackgroundImage(resizable, for: state, barMetrics: .compact)
+        }
     }
 
     var body: some Scene {
